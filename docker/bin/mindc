@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+#
+# mindc - UTF-8 で書かれた Mind ソースをコンパイルするラッパー
+#
+#   使い方: mindc <ソース> [ライブラリ ...]
+#           mindc hello.src file
+#           mindc hello file          （拡張子 .src は省略可）
+#
+# Mind 8 for Linux のコンパイラは EUC-JP しか解釈しない。そこで
+#   1. ソースディレクトリ内の *.src を EUC-JP へ変換した影ディレクトリを作る
+#   2. その中で本物の `mind` を実行する
+#   3. コンパイラの出力を EUC-JP -> UTF-8 に戻して表示する
+#   4. 生成された実行ファイルと中間ファイルを元のディレクトリへ書き戻す
+# という流れにして、手元のソースは UTF-8 のまま扱えるようにしている。
+#
+# すでに EUC-JP で書かれている .src はそのまま複写するので、UTF-8 と EUC-JP が
+# 混在していても動く。
+#
+# 環境変数:
+#   MIND_SRC_ENCODING  ソースの文字コード（既定: UTF-8）
+#   MIND_BUILD_DIR     影ディレクトリの場所（既定: <ソースの場所>/.mindbuild）
+#   MIND_KEEP_BUILD    0 なら影ディレクトリを削除（既定: 1 = 残す）
+
+set -uo pipefail
+
+readonly PROG="${0##*/}"
+
+die() { echo "${PROG}: $*" >&2; exit 1; }
+
+usage() {
+    cat >&2 <<'USAGE'
+使い方: mindc <ソースファイル> [ライブラリ ...]
+
+例:
+  mindc hello.src file
+  mindc samples/hello file
+
+オプション:
+  -h, --help    このヘルプを表示
+USAGE
+}
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    '')        usage; exit 1 ;;
+esac
+
+SRC_ENC="${MIND_SRC_ENCODING:-UTF-8}"
+
+target="$1"; shift
+libs=("$@")
+
+# .src を補って実体を決める
+if [[ -f "${target}" ]]; then
+    src_path="${target}"
+elif [[ -f "${target}.src" ]]; then
+    src_path="${target}.src"
+else
+    die "ソースが見つかりません: ${target} (または ${target}.src)"
+fi
+
+src_dir="$(cd "$(dirname "${src_path}")" && pwd)"
+src_file="$(basename "${src_path}")"
+base="${src_file%.src}"
+
+# Mind はソース名を実行ファイル名にそのまま使うため、ASCII に限定しておく
+if [[ "${base}" != "${base#*[!A-Za-z0-9_.-]}" ]]; then
+    die "ソースのファイル名は ASCII のみにしてください（現在: ${src_file}）"
+fi
+
+build_dir="${MIND_BUILD_DIR:-${src_dir}/.mindbuild}"
+mkdir -p "${build_dir}" || die "ビルドディレクトリを作成できません: ${build_dir}"
+
+# --- 1. ソースを EUC-JP へ変換して影ディレクトリに配置 -----------------------
+shopt -s nullglob
+converted=0
+for f in "${src_dir}"/*.src; do
+    name="$(basename "${f}")"
+    dest="${build_dir}/${name}"
+
+    if iconv -f "${SRC_ENC}" -t EUC-JP "${f}" > "${dest}" 2>/dev/null; then
+        converted=$((converted + 1))
+        continue
+    fi
+    rm -f "${dest}"
+
+    # 変換に失敗した場合、すでに EUC-JP ならそのまま使う
+    if iconv -f EUC-JP -t EUC-JP "${f}" > /dev/null 2>&1; then
+        cp -p "${f}" "${dest}"
+        converted=$((converted + 1))
+        continue
+    fi
+
+    die "${name} を ${SRC_ENC} から EUC-JP に変換できませんでした（EUC-JP に無い文字が含まれている可能性があります）"
+done
+shopt -u nullglob
+
+(( converted > 0 )) || die "${src_dir} に *.src がありません"
+
+# --- 2. 影ディレクトリで mind を実行 ----------------------------------------
+cd "${build_dir}" || die "cd に失敗: ${build_dir}"
+
+# .inf（インフォメーションファイル）は文法エラー時のみ生成される。
+# 前回の残骸があると誤検出するので必ず消してから実行する。
+rm -f "${base}.inf"
+
+set -o pipefail
+mind "${base}" ${libs[@]+"${libs[@]}"} 2>&1 | iconv -f EUC-JP -t UTF-8 -c
+status="${PIPESTATUS[0]}"
+
+if (( status != 0 )); then
+    # 文法エラー時は .inf（インフォメーションファイル）が生成される。
+    # 中身を UTF-8 で表示したうえで、原本はそのまま元のディレクトリへ書き戻す。
+    if [[ -e "${base}.inf" ]]; then
+        echo "${PROG}: --- ${base}.inf ---" >&2
+        iconv -f EUC-JP -t UTF-8 -c "${base}.inf" >&2
+        cp -p "${base}.inf" "${src_dir}/${base}.inf"
+    fi
+    echo "${PROG}: コンパイルに失敗しました (exit=${status})" >&2
+    exit "${status}"
+fi
+
+# --- 3. 成果物を元のディレクトリへ書き戻す ----------------------------------
+for ext in '' .mco .sym .his .inf; do
+    artifact="${base}${ext}"
+    [[ -e "${artifact}" ]] || continue
+    cp -p "${artifact}" "${src_dir}/${artifact}"
+done
+
+if [[ "${MIND_KEEP_BUILD:-1}" == "0" ]]; then
+    rm -rf "${build_dir}"
+fi
+
+echo "${PROG}: ${src_dir}/${base} を生成しました" >&2

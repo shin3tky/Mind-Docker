@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# mindrun - Mind が生成した実行ファイルを、入出力を UTF-8 に変換しながら実行する
+#
+#   使い方: mindrun ./hello [引数 ...]
+#           echo "森田" | mindrun ./greet
+#
+# Mind の実行ファイルは EUC-JP で入出力するので、端末（UTF-8）との間で変換する。
+# 変換には mindconv を使う。iconv(1) は入力をまとめて読んでから変換するため、
+# 改行で終わらないプロンプト（「お名前を入力してください＞」など）が入力待ちの間
+# 表示されず、対話実行が成立しない。mindconv は届いたぶんを即座に書き出す。
+#
+# 環境変数:
+#   MIND_CONV  変換に使うコマンド（既定: mindconv。無ければ iconv にフォールバック）
+
+set -uo pipefail
+
+readonly PROG="${0##*/}"
+
+if [[ $# -eq 0 ]]; then
+    echo "使い方: ${PROG} <実行ファイル> [引数 ...]" >&2
+    exit 1
+fi
+if [[ "${1}" == "-h" || "${1}" == "--help" ]]; then
+    echo "使い方: ${PROG} <実行ファイル> [引数 ...]" >&2
+    exit 0
+fi
+
+target="$1"; shift
+
+if [[ ! -x "${target}" ]]; then
+    if [[ -x "./${target}" ]]; then
+        target="./${target}"
+    else
+        echo "${PROG}: 実行できません: ${target}" >&2
+        exit 1
+    fi
+fi
+
+MINDCONV="${MIND_CONV:-mindconv}"
+command -v "${MINDCONV}" > /dev/null 2>&1 || MINDCONV=""
+
+# conv <変換元> <変換先> : 標準入力を変換して標準出力へ
+conv() {
+    if [[ -n "${MINDCONV}" ]]; then
+        "${MINDCONV}" "$1" "$2"
+    else
+        iconv -f "$1" -t "$2" -c
+    fi
+}
+
+tmpdir="$(mktemp -d)"
+in_fifo="${tmpdir}/stdin"
+mkfifo "${in_fifo}" || { echo "${PROG}: FIFO を作成できません" >&2; rm -rf "${tmpdir}"; exit 1; }
+
+cleanup() {
+    [[ -n "${conv_pid:-}" ]] && kill "${conv_pid}" 2> /dev/null
+    rm -rf "${tmpdir}"
+}
+trap cleanup EXIT
+
+# 入力側: UTF-8 -> EUC-JP
+#
+# 非対話シェルでは「&」で起動したジョブの標準入力が /dev/null に繋がれるため
+# （POSIX の規定）、元の標準入力を複製して明示的に渡す。これをしないと変換側が
+# 即 EOF になり、プログラムが入力待ちにならない。
+exec {orig_stdin}<&0
+conv UTF-8 EUC-JP <&"${orig_stdin}" > "${in_fifo}" &
+conv_pid=$!
+exec {orig_stdin}<&-
+
+# 本体。標準エラーも UTF-8 に戻す
+set -o pipefail
+"${target}" "$@" < "${in_fifo}" 2> >(conv EUC-JP UTF-8 >&2) | conv EUC-JP UTF-8
+status="${PIPESTATUS[0]}"
+
+exit "${status:-0}"

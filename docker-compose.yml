@@ -1,0 +1,20 @@
+name: mind-docker
+
+services:
+  mind:
+    image: mind-docker:8.0.08
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MIND_TARBALL: vendor/mind-for-linux-8.0.08.tgz
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      LANG: ja_JP.eucJP
+      JLESSCHARSET: japanese
+    tty: true
+    stdin_open: true
+    command: ["bash"]

@@ -1,0 +1,8 @@
+vendor/mind-for-linux-*.tgz
+
+*.mco
+*.sym
+*.his
+*.inf
+
+.DS_Store

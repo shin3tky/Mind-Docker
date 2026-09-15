@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#
+# mind-selftest - この環境で Mind が正しく動くかを確認する
+#
+#   (1) 公式手順どおり、EUC-JP のソースを素の mind に渡す
+#   (2) ラッパー経由で、UTF-8 のソースをそのままコンパイル・実行する
+#   (3) 標準入力も UTF-8 のまま渡せることを確認する
+#
+# 環境変数:
+#   MIND_SAMPLES  サンプルの場所（既定: ${MIND_HOME}/samples）
+
+set -uo pipefail
+
+readonly PROG="${0##*/}"
+readonly SAMPLES="${MIND_SAMPLES:-${MIND_HOME:-/opt/mind}/samples}"
+
+fail() {
+    echo "" >&2
+    echo "${PROG}: NG - $*" >&2
+    exit 1
+}
+
+hint_32bit() {
+    cat >&2 <<'HINT'
+
+32bit x86 のバイナリを実行できていない可能性があります。
+Apple Silicon の場合は Docker Desktop の Settings → General → Virtual Machine Options で
+「Use Rosetta for x86_64/amd64 emulation on Apple Silicon」のチェックを外してください
+（Rosetta は x86_64 専用で、32bit の i386 は翻訳しません）。
+HINT
+}
+
+for f in hello.src greet.src; do
+    [[ -f "${SAMPLES}/${f}" ]] || fail "サンプルが見つかりません: ${SAMPLES}/${f}"
+done
+
+workdir="$(mktemp -d)"
+trap 'cd /; rm -rf "${workdir}"' EXIT
+
+# --- (1) 公式手順そのまま ---------------------------------------------------
+echo "=== (1) 公式手順どおり EUC-JP のソースを mind に渡す ==="
+mkdir -p "${workdir}/raw"
+cd "${workdir}/raw" || fail "cd に失敗しました"
+
+iconv -f UTF-8 -t EUC-JP "${SAMPLES}/hello.src" > hello.src \
+    || fail "サンプルを EUC-JP に変換できませんでした"
+
+if ! mind hello file; then
+    hint_32bit
+    fail "mind コンパイラを実行できませんでした"
+fi
+
+if ! ./hello > out.euc; then
+    hint_32bit
+    fail "生成された実行ファイルを起動できませんでした"
+fi
+
+iconv -f EUC-JP -t UTF-8 out.euc > out.utf8 || fail "出力を UTF-8 に変換できませんでした"
+cat out.utf8
+grep -q 'こんにちは、世界' out.utf8 || fail "期待した出力が得られませんでした"
+
+# --- (2) ラッパー経由 -------------------------------------------------------
+echo "=== (2) ラッパー経由で UTF-8 のソースをそのまま ==="
+mkdir -p "${workdir}/utf8"
+cd "${workdir}/utf8" || fail "cd に失敗しました"
+
+cp "${SAMPLES}/hello.src" "${SAMPLES}/greet.src" . || fail "サンプルを複写できませんでした"
+
+mindc hello.src file || fail "mindc でのコンパイルに失敗しました"
+mindrun ./hello < /dev/null > hello.out || fail "mindrun での実行に失敗しました"
+cat hello.out
+grep -q 'こんにちは、世界' hello.out || fail "期待した出力が得られませんでした"
+
+# --- (3) 標準入力の変換 -----------------------------------------------------
+echo "=== (3) 標準入力も UTF-8 のまま渡せる ==="
+mindc greet.src file || fail "mindc でのコンパイルに失敗しました"
+printf '世界\n' | mindrun ./greet > greet.out || fail "mindrun での実行に失敗しました"
+cat greet.out
+grep -q '世界さん、こんにちは' greet.out || fail "標準入力の変換が期待どおりではありません"
+
+# --- (4) 入力待ちのプロンプトが先に表示されるか -----------------------------
+echo "=== (4) 入力待ちのプロンプトが入力前に表示される ==="
+in_fifo="${workdir}/stdin"
+mkfifo "${in_fifo}" || fail "FIFO を作成できませんでした"
+
+mindrun ./greet < "${in_fifo}" > prompt.out 2>/dev/null &
+runner=$!
+exec 9> "${in_fifo}"
+
+seen=0
+for _ in $(seq 1 60); do
+    if grep -q 'お名前を入力してください' prompt.out 2>/dev/null; then
+        seen=1
+        break
+    fi
+    sleep 0.5
+done
+
+if (( seen == 0 )); then
+    exec 9>&-
+    kill "${runner}" 2>/dev/null
+    fail "入力を与える前にプロンプトが表示されませんでした（変換フィルタが溜め込んでいます）"
+fi
+echo "プロンプトを確認しました"
+
+printf '世界\n' >&9
+exec 9>&-
+wait "${runner}"
+cat prompt.out
+grep -q '世界さん、こんにちは' prompt.out || fail "入力後の出力が期待どおりではありません"
+
+echo ""
+echo "${PROG}: OK - この環境で Mind が動作しています"

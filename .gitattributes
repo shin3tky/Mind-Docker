@@ -1,0 +1,4 @@
+*.src -text
+*.mco -text
+*.sym binary
+*.inf -text
