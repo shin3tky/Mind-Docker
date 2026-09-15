@@ -1,7 +1,7 @@
 # Mind-Docker
 
 日本語プログラミング言語 [Mind](https://www.scripts-lab.co.jp/mind/whatsmind.html)（Scripts Lab Inc.）の
-Linux 版を Docker で動かします。
+Linux 版を macOS 上の Docker で動かします。
 
 Mind 8 for Linux の配布物は **x86 32bit** バイナリです。本リポジトリは
 [公式のインストール手順（Linux）](https://www.scripts-lab.co.jp/mind/ver8/doc/operation-1b-Install-linux.html)
