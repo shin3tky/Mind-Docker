@@ -49,7 +49,15 @@ RUN set -eux; \
 # UTF-8 で書いたソースをそのまま扱うためのラッパー。
 # Mind 本体は EUC-JP 固定なので、境界でだけ変換する（README「文字コード」参照）。
 COPY docker/bin/ /usr/local/bin/
-RUN chmod 0755 /usr/local/bin/mindc /usr/local/bin/mindrun /usr/local/bin/mind-selftest
+RUN set -eux; \
+    sed -i 's/\r$//' \
+        /usr/local/bin/mindc \
+        /usr/local/bin/mindrun \
+        /usr/local/bin/mind-selftest; \
+    chmod 0755 \
+        /usr/local/bin/mindc \
+        /usr/local/bin/mindrun \
+        /usr/local/bin/mind-selftest
 
 # ---------------------------------------------------------------------------
 # builder: 配布物を展開し、kernel を make する

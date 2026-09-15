@@ -1,7 +1,7 @@
 # Mind-Docker
 
 日本語プログラミング言語 [Mind](https://www.scripts-lab.co.jp/mind/whatsmind.html)（Scripts Lab Inc.）の
-Linux 版を Docker で動かします。
+Linux 版を macOS 上の Docker で動かします。
 
 Mind 8 for Linux の配布物は **x86 32bit** バイナリです。本リポジトリは
 [公式のインストール手順（Linux）](https://www.scripts-lab.co.jp/mind/ver8/doc/operation-1b-Install-linux.html)
@@ -284,6 +284,74 @@ make doctor
 
 ---
 
+## Windows（WSL2 + Docker Desktop）で使う場合
+
+Windows は x64 なので `linux/amd64` がネイティブで動きます。エミュレーションが挟まらないぶん、
+Apple Silicon より速く、Rosetta まわりの注意も不要です。
+
+### 操作は WSL2 のシェルから
+
+PowerShell には `make` がありません。Docker Desktop の
+**Settings → Resources → WSL Integration** で使う WSL ディストリビューションを有効にしたうえで、
+WSL2 のシェルから実行してください。`make` が無ければ入れます。
+
+```sh
+sudo apt update && sudo apt install -y make
+```
+
+### 改行コード（重要）
+
+Windows の Git は既定で `core.autocrlf=true` のため、**指定しないとチェックアウト時に
+ファイルが CRLF になります**。そうなると Linux コンテナの中で
+
+```
+/usr/bin/env: 'bash\r': No such file or directory
+```
+
+となり、`mindc` などのスクリプトが起動できません。本リポジトリは `.gitattributes` で
+`* text=auto eol=lf` を指定して LF に固定しているので、通常は意識不要です。
+
+`.gitattributes` が入る前にクローンしていた場合は、作業ツリーを取り直してください。
+
+```sh
+git pull
+git rm --cached -r .
+git reset --hard
+```
+
+確認:
+
+```sh
+file docker/bin/mindc     # "CRLF" と出なければ OK
+```
+
+> Dockerfile 側にも保険として CR を落とす処理を入れてありますが、`Makefile` や
+> `Dockerfile` 自体は Git のチェックアウト結果がそのまま効くので、`.gitattributes` が本筋です。
+
+### リポジトリの置き場所
+
+`/mnt/c/...`（NTFS）でも動きますが、バインドマウントが遅くなります。
+**WSL2 側のファイルシステム**（`~/Mind-Docker` など）に置くほうが快適です。
+
+```sh
+git clone <このリポジトリ> ~/Mind-Docker
+cd ~/Mind-Docker
+```
+
+### 手順
+
+あとは macOS/Linux と同じです。`vendor/` に配布物を置くのを忘れずに。
+
+```sh
+make doctor     # x64 なので通るはず
+make check
+make build
+make selftest
+make hello
+```
+
+---
+
 ## トラブルシュート
 
 | 症状 | 対処 |
@@ -294,6 +362,7 @@ make doctor
 | `kernel/ が見つかりません` | 配布物が壊れている。`tar tzf vendor/*.tgz \| head` で確認 |
 | `make all` が失敗 | ベースを新しくしていないか確認。gcc 14 以降は非対応（下記） |
 | 日本語が化ける | コンテナ内で `locale` を確認。`ja_JP.eucJP` になっていること |
+| `/usr/bin/env: 'bash\r'` / `'\r': command not found` | Windows で CRLF のままチェックアウトされている。上の「Windows」→「改行コード」を参照 |
 | `EUC-JP に変換できませんでした` | ソースに EUC-JP へ変換できない文字（絵文字、`①` など）が含まれている |
 | 実行結果が文字化けする | `./hello` を直接叩いていないか。`mindrun ./hello` を使うか `iconv -f EUC-JP -t UTF-8` を通す |
 | 入力待ちのプロンプトが出ない | `iconv` を挟んでいないか。`mindrun` 経由なら `mindconv` が使われる（`mind-selftest` の (4) で検査） |
@@ -328,12 +397,20 @@ docker build --platform linux/386 --build-arg BASE_PLATFORM=linux/386 -t mind-do
 
 ## 動作確認済みの構成
 
-| | |
+| ホスト環境 | 確認内容 |
 |---|---|
-| ホスト | x86_64 Linux（glibc 2.39 / gcc 13.3） |
-| 手順 | `dpkg --add-architecture i386` → `libc6:i386` `libgcc-s1:i386` → `gcc-multilib` |
-| 結果 | `make all` / `make install` 成功、`mind hello file` → `./hello` → `こんにちは、世界` |
-| ラッパー | UTF-8 の `hello.src` を `mindc` → `mindrun` で実行、`greet.src` へ UTF-8 の標準入力を渡して往復とも確認。対話時にプロンプトが入力前に出ることも確認 |
+| **Windows 11 Pro** + WSL2 + Docker Desktop（x64） | `make doctor` → `make build` → `make selftest` すべて通過 |
+| **macOS**（Apple Silicon）+ Docker Desktop | イメージのビルドと、コンテナ内でのコンパイル・実行を確認 |
+| **x86_64 Linux**（glibc 2.39 / gcc 13.3） | 公式手順どおりの導入で `kernel` の make から hello, world まで |
+
+検証の内訳:
+
+- **導入手順** … `dpkg --add-architecture i386` → `libc6:i386` `libgcc-s1:i386` → `gcc-multilib` →
+  `make clean` / `make all` / `make install` 成功 → `mind hello file` → `./hello` → `こんにちは、世界`
+- **ラッパー** … UTF-8 の `hello.src` を `mindc` → `mindrun` で実行。`greet.src` へ UTF-8 の標準入力を
+  渡して往復とも確認。対話時にプロンプトが入力前に出ることも確認
+- **mindconv** … `iconv -c` との差分テスト（有効な入力 200 件・不正バイト 200 件・ランダム分割
+  ストリーミング 300 件）で完全一致。ASan/UBSan 下でのファズ 1200 回、valgrind でエラー・リークなし
 
 ---
 

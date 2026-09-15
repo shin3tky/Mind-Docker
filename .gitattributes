@@ -1,4 +1,14 @@
+# 改行コードは LF に固定する。
+* text=auto eol=lf
+
+# Mind のソースは EUC-JP で書かれることもあるため、Git に内容を触らせない
 *.src -text
+
+# Mind の中間ファイル・履歴・エラー出力（EUC-JP のテキスト／バイナリ）
 *.mco -text
 *.sym binary
+*.his -text
 *.inf -text
+
+# 配布物
+*.tgz binary
