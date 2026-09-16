@@ -7,6 +7,7 @@
 #   make hello     … UTF-8 のまま samples/hello.src をコンパイルして実行（ラッパー経由）
 #   make greet     … 標準入力も UTF-8 で扱えることの確認（対話実行）
 #   make hello-raw … 公式手順そのまま（EUC-JP に変換して素の mind を叩く）
+#   make inspect   … 配布物の中身（同梱 .src / bin / lib）を調べる
 #   make shell     … コンテナのシェルに入る
 #   make clean     … コンパイル生成物を削除
 #   make distclean … イメージごと削除
@@ -16,7 +17,7 @@ DOCKER   ?= docker
 TARBALL  ?= vendor/mind-for-linux-8.0.08.tgz
 PLATFORM ?= linux/amd64
 
-.PHONY: help doctor check build selftest hello greet hello-raw shell clean distclean
+.PHONY: help doctor check build selftest hello greet hello-raw inspect shell clean distclean
 
 help:
 	@grep -E '^#   ' $(MAKEFILE_LIST) | sed 's/^#   //'
@@ -55,6 +56,9 @@ hello-raw: build
 	@$(COMPOSE) run --rm mind bash -c '\
 	  mkdir -p /tmp/hr && iconv -f UTF-8 -t EUC-JP /work/samples/hello.src > /tmp/hr/hello.src && \
 	  cd /tmp/hr && mind hello file && ./hello | iconv -f EUC-JP -t UTF-8'
+
+inspect: build
+	@$(COMPOSE) run --rm -T mind mind-inspect
 
 shell: build
 	$(COMPOSE) run --rm mind bash

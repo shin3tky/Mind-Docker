@@ -53,10 +53,12 @@ RUN set -eux; \
     sed -i 's/\r$//' \
         /usr/local/bin/mindc \
         /usr/local/bin/mindrun \
+        /usr/local/bin/mind-inspect \
         /usr/local/bin/mind-selftest; \
     chmod 0755 \
         /usr/local/bin/mindc \
         /usr/local/bin/mindrun \
+        /usr/local/bin/mind-inspect \
         /usr/local/bin/mind-selftest
 
 # ---------------------------------------------------------------------------

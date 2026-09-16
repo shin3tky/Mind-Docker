@@ -93,6 +93,7 @@ cd /tmp && cp /work/samples/*.src . && mindc hello.src file && mindrun ./hello
 | `mindc <src> <lib>` | **UTF-8 のソース**をコンパイルするラッパー |
 | `mindrun <exe> [引数]` | 実行ファイルを入出力 UTF-8 で実行するラッパー |
 | `mindconv <元> <先>` | 届いたぶんを即座に書き出す文字コード変換フィルタ |
+| `mind-inspect` | 配布物の中身（同梱 `.src` / `bin` / `lib`）を調べる |
 | `mind-selftest` | 上記が一通り動くかをまとめて確認する |
 
 ---
