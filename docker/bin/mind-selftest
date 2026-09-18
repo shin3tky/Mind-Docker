@@ -113,5 +113,36 @@ wait "${runner}"
 cat prompt.out
 grep -q '世界さん、こんにちは' prompt.out || fail "入力後の出力が期待どおりではありません"
 
+# --- (5) シンボリックリンクと削除境界 ---------------------------------------
+echo "=== (5) mindc がリンク先や既存ビルドディレクトリを壊さない ==="
+mkdir -p "${workdir}/security/.mindbuild" "${workdir}/security/custom-build"
+cd "${workdir}/security" || fail "cd に失敗しました"
+cp "${SAMPLES}/hello.src" . || fail "サンプルを複写できませんでした"
+printf '保持する内容\n' > protected
+ln -s ../protected .mindbuild/hello.src
+ln -s protected hello
+
+mindc hello.src file || fail "リンクを含む場所でのコンパイルに失敗しました"
+[[ ! -L .mindbuild/hello.src ]] || fail "変換先のシンボリックリンクが残っています"
+[[ ! -L hello && -x hello ]] || fail "成果物のシンボリックリンクが安全に置換されていません"
+grep -q '保持する内容' protected || fail "シンボリックリンク先が上書きされました"
+
+if MIND_BUILD_DIR="${workdir}/security" mindc hello.src file >/dev/null 2>&1; then
+    fail "ソースディレクトリ自体をビルド先として受け入れました"
+fi
+
+ln -s custom-build linked-build
+if MIND_BUILD_DIR="${workdir}/security/linked-build" mindc hello.src file >/dev/null 2>&1; then
+    fail "シンボリックリンクをビルド先として受け入れました"
+fi
+
+printf '残すファイル\n' > custom-build/sentinel
+MIND_BUILD_DIR="${workdir}/security/custom-build" MIND_KEEP_BUILD=0 mindc hello.src file \
+    || fail "一時ビルドディレクトリでのコンパイルに失敗しました"
+grep -q '残すファイル' custom-build/sentinel || fail "既存ビルドディレクトリの内容が失われました"
+if find custom-build -mindepth 1 -maxdepth 1 -type d -name 'mindc.*' | grep -q .; then
+    fail "一時ビルドディレクトリが残っています"
+fi
+
 echo ""
 echo "${PROG}: OK - この環境で Mind が動作しています"

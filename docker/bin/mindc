@@ -27,6 +27,26 @@ readonly PROG="${0##*/}"
 
 die() { echo "${PROG}: $*" >&2; exit 1; }
 
+# ファイルを同じディレクトリ内の一時ファイルへ複写してから置き換える。
+# 宛先がシンボリックリンクでもリンク先をたどらず、リンクそのものを置き換える。
+atomic_copy() {
+    local source="$1"
+    local destination="$2"
+    local dir tmp
+
+    dir="$(dirname "${destination}")"
+    tmp="$(mktemp "${dir}/.mindc-copy.XXXXXX")" \
+        || die "一時ファイルを作成できません: ${dir}"
+    if ! cp --preserve=mode,timestamps -- "${source}" "${tmp}"; then
+        rm -f -- "${tmp}"
+        die "ファイルを複写できません: ${source}"
+    fi
+    if ! mv -fT -- "${tmp}" "${destination}"; then
+        rm -f -- "${tmp}"
+        die "ファイルを置き換えられません: ${destination}"
+    fi
+}
+
 usage() {
     cat >&2 <<'USAGE'
 使い方: mindc <ソースファイル> [ライブラリ ...]
@@ -59,17 +79,50 @@ else
     die "ソースが見つかりません: ${target} (または ${target}.src)"
 fi
 
-src_dir="$(cd "$(dirname "${src_path}")" && pwd)"
+src_dir="$(cd "$(dirname "${src_path}")" && pwd -P)"
 src_file="$(basename "${src_path}")"
 base="${src_file%.src}"
 
-# Mind はソース名を実行ファイル名にそのまま使うため、ASCII に限定しておく
-if [[ "${base}" != "${base#*[!A-Za-z0-9_.-]}" ]]; then
-    die "ソースのファイル名は ASCII のみにしてください（現在: ${src_file}）"
+# Mind はソース名を実行ファイル名にそのまま使う。パスとして特別な `.` / `..`、
+# オプションに見える先頭 `-`、空文字も同時に排除する。
+if [[ ! "${base}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+    die "ソースのファイル名は英数字または _ で始まる ASCII 名にしてください（現在: ${src_file}）"
 fi
 
-build_dir="${MIND_BUILD_DIR:-${src_dir}/.mindbuild}"
-mkdir -p "${build_dir}" || die "ビルドディレクトリを作成できません: ${build_dir}"
+keep_build="${MIND_KEEP_BUILD:-1}"
+[[ "${keep_build}" == "0" || "${keep_build}" == "1" ]] \
+    || die "MIND_KEEP_BUILD は 0 または 1 を指定してください"
+
+requested_build_dir="${MIND_BUILD_DIR:-${src_dir}/.mindbuild}"
+[[ ! -L "${requested_build_dir}" ]] \
+    || die "ビルドディレクトリにシンボリックリンクは使えません: ${requested_build_dir}"
+mkdir -p -- "${requested_build_dir}" \
+    || die "ビルドディレクトリを作成できません: ${requested_build_dir}"
+requested_build_dir="$(cd "${requested_build_dir}" && pwd -P)" \
+    || die "ビルドディレクトリを解決できません: ${requested_build_dir}"
+
+[[ "${requested_build_dir}" != "/" ]] || die "ルートディレクトリはビルド先にできません"
+[[ "${requested_build_dir}" != "${src_dir}" ]] \
+    || die "ソースディレクトリ自体はビルド先にできません"
+
+ephemeral_build_dir=""
+if [[ "${keep_build}" == "0" ]]; then
+    # 利用者が指定したディレクトリそのものは決して再帰削除しない。
+    # mindc が作った一時サブディレクトリだけを終了時に片づける。
+    build_dir="$(mktemp -d "${requested_build_dir}/mindc.XXXXXX")" \
+        || die "一時ビルドディレクトリを作成できません: ${requested_build_dir}"
+    ephemeral_build_dir="${build_dir}"
+else
+    build_dir="${requested_build_dir}"
+fi
+
+cleanup() {
+    if [[ -n "${ephemeral_build_dir}" ]]; then
+        cd / 2>/dev/null || true
+        rm -rf -- "${ephemeral_build_dir}"
+    fi
+}
+trap cleanup EXIT
 
 # --- 1. ソースを EUC-JP へ変換して影ディレクトリに配置 -----------------------
 shopt -s nullglob
@@ -77,16 +130,19 @@ converted=0
 for f in "${src_dir}"/*.src; do
     name="$(basename "${f}")"
     dest="${build_dir}/${name}"
+    tmp="$(mktemp "${build_dir}/.mindc-source.XXXXXX")" \
+        || die "一時ファイルを作成できません: ${build_dir}"
 
-    if iconv -f "${SRC_ENC}" -t EUC-JP "${f}" > "${dest}" 2>/dev/null; then
+    if iconv -f "${SRC_ENC}" -t EUC-JP "${f}" > "${tmp}" 2>/dev/null; then
+        mv -fT -- "${tmp}" "${dest}" || { rm -f -- "${tmp}"; die "変換結果を配置できません: ${dest}"; }
         converted=$((converted + 1))
         continue
     fi
-    rm -f "${dest}"
+    rm -f -- "${tmp}"
 
     # 変換に失敗した場合、すでに EUC-JP ならそのまま使う
     if iconv -f EUC-JP -t EUC-JP "${f}" > /dev/null 2>&1; then
-        cp -p "${f}" "${dest}"
+        atomic_copy "${f}" "${dest}"
         converted=$((converted + 1))
         continue
     fi
@@ -114,7 +170,9 @@ if (( status != 0 )); then
     if [[ -e "${base}.inf" ]]; then
         echo "${PROG}: --- ${base}.inf ---" >&2
         iconv -f EUC-JP -t UTF-8 -c "${base}.inf" >&2
-        cp -p "${base}.inf" "${src_dir}/${base}.inf"
+        [[ -f "${base}.inf" && ! -L "${base}.inf" ]] \
+            || die "不正な成果物です（通常ファイルではありません）: ${base}.inf"
+        atomic_copy "${base}.inf" "${src_dir}/${base}.inf"
     fi
     echo "${PROG}: コンパイルに失敗しました (exit=${status})" >&2
     exit "${status}"
@@ -123,12 +181,10 @@ fi
 # --- 3. 成果物を元のディレクトリへ書き戻す ----------------------------------
 for ext in '' .mco .sym .his .inf; do
     artifact="${base}${ext}"
-    [[ -e "${artifact}" ]] || continue
-    cp -p "${artifact}" "${src_dir}/${artifact}"
+    [[ -e "${artifact}" || -L "${artifact}" ]] || continue
+    [[ -f "${artifact}" && ! -L "${artifact}" ]] \
+        || die "不正な成果物です（通常ファイルではありません）: ${artifact}"
+    atomic_copy "${artifact}" "${src_dir}/${artifact}"
 done
-
-if [[ "${MIND_KEEP_BUILD:-1}" == "0" ]]; then
-    rm -rf "${build_dir}"
-fi
 
 echo "${PROG}: ${src_dir}/${base} を生成しました" >&2

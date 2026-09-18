@@ -157,7 +157,11 @@ mindc hello.src file      # 拡張子は省略可: mindc hello file
 |---|---|---|
 | `MIND_SRC_ENCODING` | `UTF-8` | ソースの文字コード |
 | `MIND_BUILD_DIR` | `<ソースの場所>/.mindbuild` | 変換後のソースを置く場所 |
-| `MIND_KEEP_BUILD` | `1` | `0` にすると変換後のディレクトリを削除する |
+| `MIND_KEEP_BUILD` | `1` | `0` にすると `MIND_BUILD_DIR` 内に専用の一時ディレクトリを作り、終了時にそれだけを削除する |
+
+`MIND_BUILD_DIR` にシンボリックリンク、ルートディレクトリ、ソースディレクトリ自体は指定できません。
+変換後のソースと成果物は一時ファイルから原子的に置き換えるため、既存のシンボリックリンク先を
+上書きしません。
 
 ### mindrun
 
