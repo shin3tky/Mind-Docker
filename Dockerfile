@@ -134,5 +134,16 @@ COPY --from=builder /opt/mind /opt/mind
 COPY --from=builder /usr/local/bin/mindconv /usr/local/bin/mindconv
 COPY samples/ ${MIND_HOME}/samples/
 
+ARG MIND_UID=10001
+ARG MIND_GID=10001
+RUN set -eux; \
+    groupadd --gid "${MIND_GID}" mind; \
+    useradd --uid "${MIND_UID}" --gid "${MIND_GID}" --no-log-init \
+        --create-home --home-dir /home/mind --shell /bin/bash mind; \
+    mkdir -p /work; \
+    chown mind:mind /work
+
+ENV HOME=/home/mind
 WORKDIR /work
+USER mind:mind
 CMD ["bash"]

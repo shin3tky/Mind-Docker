@@ -20,6 +20,10 @@ fail() {
     exit 1
 }
 
+if (( $(id -u) == 0 )); then
+    fail "コンテナが root で実行されています"
+fi
+
 hint_32bit() {
     cat >&2 <<'HINT'
 
