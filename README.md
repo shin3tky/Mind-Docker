@@ -32,6 +32,9 @@ GitHub Actions では、最終イメージと同じ Debian パッケージ集合
 ステージを Trivy で検査します。High / Critical のうち修正版が提供されている脆弱性が見つかると
 ワークフローは失敗します。Pull Request、`main` への push、毎週月曜日、および手動実行が対象です。
 
+ベースイメージ `debian:bookworm-slim` は OCI digest で固定しています。Mind の配布物も、公式の
+SHA-256 をビルド引数 `MIND_TARBALL_SHA256` の既定値として保持し、展開前に検証します。
+
 Mind の公式配布物は再配布しないため、CI ではそれを必要としない `base` ステージだけをビルドします。
 `runtime` ステージは追加の Debian パッケージを導入しないため、OS パッケージの検査範囲は同一です。
 

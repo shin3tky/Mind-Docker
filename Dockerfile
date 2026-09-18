@@ -10,7 +10,6 @@
 #
 # ビルド前に vendor/mind-for-linux-8.0.08.tgz を置くこと（vendor/README.md 参照）。
 
-ARG DEBIAN_TAG=bookworm-slim
 # 64bit を前提にした構成。どうしても 64bit 上で 32bit を動かせない環境向けの
 # 逃げ道として linux/386 も指定できる。
 ARG BASE_PLATFORM=linux/amd64
@@ -18,7 +17,8 @@ ARG BASE_PLATFORM=linux/amd64
 # ---------------------------------------------------------------------------
 # base: 64bit OS + 32bit ランタイム + EUC-JP ロケール
 # ---------------------------------------------------------------------------
-FROM --platform=${BASE_PLATFORM} debian:${DEBIAN_TAG} AS base
+# bookworm-slim の OCI index を digest で固定する。index は amd64 / 386 の両方を含む。
+FROM --platform=${BASE_PLATFORM} debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     MIND_HOME=/opt/mind \
@@ -82,7 +82,12 @@ RUN set -eux; \
 ENV HOME=${MIND_HOME}
 
 ARG MIND_TARBALL=vendor/mind-for-linux-8.0.08.tgz
+ARG MIND_TARBALL_SHA256=c9ba4dea211b8b85dbad602552fb8a1ff7c91d42e1581e838ae1f213f05bde53
 COPY ${MIND_TARBALL} /tmp/mind.tgz
+
+# 配布物を展開・実行する前に、公開されている SHA-256 と一致することを確認する。
+RUN set -eux; \
+    printf '%s  %s\n' "${MIND_TARBALL_SHA256}" /tmp/mind.tgz | sha256sum --check --strict -
 
 # 公式手順どおり tar の p オプション必須（cgilib 配下が 777 を要求するため）
 RUN set -eux; \

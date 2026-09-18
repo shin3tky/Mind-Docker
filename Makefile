@@ -34,7 +34,10 @@ check:
 	@test -f $(TARBALL) || { \
 	  echo "ERROR: $(TARBALL) がありません。vendor/README.md の手順で配置してください。"; \
 	  exit 1; }
-	@echo "OK: $(TARBALL)"
+	@test -f $(TARBALL).sha256 || { \
+	  echo "ERROR: $(TARBALL).sha256 がありません。vendor/README.md の手順で配置してください。"; \
+	  exit 1; }
+	@cd $(dir $(TARBALL)) && shasum -a 256 -c $(notdir $(TARBALL)).sha256
 
 build: check
 	$(COMPOSE) build mind
