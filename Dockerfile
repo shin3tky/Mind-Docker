@@ -35,6 +35,7 @@ ENV MLIBPATH=${MIND_ROOT}/lib \
 RUN set -eux; \
     dpkg --add-architecture i386; \
     apt-get update; \
+    apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
         libc6:i386 \
         libgcc-s1:i386 \
