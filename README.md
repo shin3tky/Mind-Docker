@@ -1,5 +1,7 @@
 # Mind-Docker
 
+[![Trivy package scan](https://github.com/shin3tky/Mind-Docker/actions/workflows/trivy.yml/badge.svg?branch=main)](https://github.com/shin3tky/Mind-Docker/actions/workflows/trivy.yml)
+
 日本語プログラミング言語 [Mind](https://www.scripts-lab.co.jp/mind/whatsmind.html)（Scripts Lab Inc.）の
 Linux 版を macOS 上の Docker で動かします。
 
