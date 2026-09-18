@@ -1,0 +1,54 @@
+name: Trivy package scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    # コードが変わらなくても、新しく公開された脆弱性を毎週検出する。
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trivy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan-os-packages:
+    name: Scan Debian packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # runtime は base から始まり、追加の Debian パッケージを導入しない。
+      # base だけなら、再配布できない Mind のアーカイブ無しで同じ OS パッケージを検査できる。
+      - name: Build package scan target
+        run: >-
+          docker build
+          --pull
+          --platform linux/amd64
+          --target base
+          --tag mind-docker-base:trivy
+          .
+
+      - name: Scan OS packages with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: mind-docker-base:trivy
+          scanners: vuln
+          vuln-type: os
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          timeout: 10m

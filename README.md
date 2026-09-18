@@ -24,6 +24,15 @@ Mind 8 for Linux の配布物は **x86 32bit** バイナリです。本リポジ
 - Docker（Docker Desktop / Docker Engine）
 - `vendor/mind-for-linux-8.0.08.tgz` … 公式サイトから各自でダウンロードして配置（[手順](vendor/README.md)）
 
+## セキュリティ検査
+
+GitHub Actions では、最終イメージと同じ Debian パッケージ集合を持つ Dockerfile の `base`
+ステージを Trivy で検査します。High / Critical のうち修正版が提供されている脆弱性が見つかると
+ワークフローは失敗します。Pull Request、`main` への push、毎週月曜日、および手動実行が対象です。
+
+Mind の公式配布物は再配布しないため、CI ではそれを必要としない `base` ステージだけをビルドします。
+`runtime` ステージは追加の Debian パッケージを導入しないため、OS パッケージの検査範囲は同一です。
+
 > **Linux 版は Version 8 が最新です。** Version 9 は Windows 専用のため、本リポジトリは Version 8 を対象にしています。
 
 ---
