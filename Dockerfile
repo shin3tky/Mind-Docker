@@ -18,7 +18,7 @@ ARG BASE_PLATFORM=linux/amd64
 # base: 64bit OS + 32bit ランタイム + EUC-JP ロケール
 # ---------------------------------------------------------------------------
 # bookworm-slim の OCI index を digest で固定する。index は amd64 / 386 の両方を含む。
-FROM --platform=${BASE_PLATFORM} debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS base
+FROM --platform=${BASE_PLATFORM} debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     MIND_HOME=/opt/mind \
