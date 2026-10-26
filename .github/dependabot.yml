@@ -1,0 +1,35 @@
+# Dependabot によるバージョン更新の設定。
+#   https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+version: 2
+
+updates:
+  # GitHub Actions: SHA 固定 + バージョンコメント（# vX.Y.Z）の形式のまま更新される。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    # 公開直後のリリースを避け、乗っ取り・撤回などのサプライチェーン事故に備える。
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  # Dockerfile のベースイメージ（debian:bookworm-slim@sha256:...）。
+  # タグ bookworm-slim はバージョン番号ではないため、提案されるのは同じタグの digest 更新のみ。
+  # gcc 14 以降では Mind の kernel がビルドできないため、trixie 以降へは手動で判断して移行すること。
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
